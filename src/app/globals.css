@@ -176,6 +176,80 @@ body {
   color: #ff7c94;
 }
 
+/* -------- Syntax highlighting -------- */
+
+.hljs-comment,
+.hljs-quote {
+    color: var(--color-dim);
+}
+
+.hljs-keyword,
+.hljs-doctag,
+.hljs-selector-tag {
+    color: #b39bff;
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-symbol {
+    color: var(--color-accent-2);
+}
+
+.hljs-number,
+.hljs-literal {
+    color: #ffb86b;
+}
+
+.hljs-title,
+.hljs-title.function_,
+.hljs-title.class_ {
+    color: #6fb7ff;
+}
+
+.hljs-built_in,
+.hljs-meta {
+    color: #ff8fb1;
+}
+
+.hljs-attr,
+.hljs-property,
+.hljs-variable,
+.hljs-params {
+    color: var(--color-fg);
+}
+
+.hljs-operator,
+.hljs-punctuation {
+    color: var(--color-dim);
+}
+
+.hljs-tag {
+  color: var(--color-dim);
+}
+
+.hljs-name {
+  color: #b39bff;
+}
+
+.hljs-attribute,
+.hljs-selector-class,
+.hljs-selector-id,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: #6fb7ff;
+}
+
+.hljs-type {
+  color: #ffd479;
+}
+
+.hljs-section,
+.hljs-bullet,
+.hljs-template-variable,
+.hljs-subst {
+  color: var(--color-fg);
+}
+
 /* -------- Motion -------- */
 
 @keyframes win-in {
