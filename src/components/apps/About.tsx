@@ -26,7 +26,7 @@ export default function About() {
       <footer className="flex items-center gap-4 border-t border-white/10 px-6 py-4">
         Check out the open-source GitHub repo for this project:
         <a
-          href="https://github.com/zytronium/zytros"
+          href="https://github.com/zytronium/ZytrOS"
           target="_blank"
           rel="noopener noreferrer"
           className="text-violet-400 transition-colors hover:text-violet-300"

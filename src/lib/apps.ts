@@ -3,11 +3,14 @@ import WelcomeIcon from "../components/app_icons/WelcomeIcon";
 import Welcome from "../components/apps/Welcome";
 import AboutIcon from "../components/app_icons/AboutIcon";
 import About from "../components/apps/About";
+import NotepadIcon from "../components/app_icons/NotepadIcon";
+import Notepad from "../components/apps/Notepad";
 
 // The order here is the order on the desktop, the taskbar, and the start menu
 export const APPS = [
   { id: "welcome", title: "Welcome to ZytrOS!", icon: WelcomeIcon, Content: Welcome },
   { id: "about", title: "About ZytrOS", icon: AboutIcon, Content: About },
+  { id: "notepad", title: "Notepad", icon: NotepadIcon, Content: Notepad },
 ] as const;
 
 export type AppDef = (typeof APPS)[number];
