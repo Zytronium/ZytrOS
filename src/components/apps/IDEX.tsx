@@ -845,6 +845,22 @@ export default function IDEX() {
   };
 
   const onEditorKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Tab adds one indent level to the current line
+    if (e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      const el = e.currentTarget;
+      const start = el.selectionStart;
+      const lineStart = el.value.lastIndexOf("\n", start - 1) + 1;
+      const unit = LANGS[lang].indent;
+
+      el.setRangeText(unit, lineStart, lineStart, "preserve");
+
+      // Keep the caret at the same position relative to the text
+      const pos = start + unit.length;
+      el.setSelectionRange(pos, pos);
+      return;
+    }
+    
     // Shift+Tab removes one indent level from the current line
     if (e.key === "Tab" && e.shiftKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
