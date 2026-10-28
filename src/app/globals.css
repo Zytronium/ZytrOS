@@ -116,9 +116,9 @@ body {
 }
 
 .win-frame {
-  background: color-mix(in srgb, var(--color-surface) 85%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+  backdrop-filter: blur(8rem);
+  -webkit-backdrop-filter: blur(8rem);
   border: 1px solid var(--color-line);
   border-radius: 12px;
   overflow: hidden;
