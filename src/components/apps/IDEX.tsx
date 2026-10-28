@@ -858,7 +858,7 @@ export default function IDEX() {
       // Insert the indentation at the start of the current line.
       const value = el.value;
       const updatedValue =
-        value.slice(0, lineStart) + unit + value.slice(lineStart);
+        value.slice(0, start) + unit + value.slice(end);
 
       // Update React state through the normal change handler.
       const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
@@ -872,7 +872,7 @@ export default function IDEX() {
       // Preserve the selection, accounting for the inserted indentation.
       el.setSelectionRange(
         start + unit.length,
-        end + unit.length,
+        start + unit.length,
       );
 
       return;
