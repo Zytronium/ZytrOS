@@ -106,6 +106,7 @@ export default function AppWindow({ id }: { id: AppId }) {
         aria-label={app.title}
         className="win-frame flex h-full flex-col"
         onPointerDownCapture={() => focus(id)}
+        style={{ backdropFilter: "blur(20px)" }}
       >
         <header className="win-titlebar" onDoubleClick={handleMaximize}>
           <Icon className="size-5 shrink-0" />
