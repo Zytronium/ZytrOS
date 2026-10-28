@@ -20,6 +20,7 @@ import csharp from "highlight.js/lib/languages/csharp";
 import go from "highlight.js/lib/languages/go";
 import dart from "highlight.js/lib/languages/dart";
 import perl from "highlight.js/lib/languages/perl";
+import type { Language } from "highlight.js";
 
 // -------- Types --------
 type Lang =
@@ -43,6 +44,7 @@ type Lang =
   | "go"
   | "dart"
   | "perl"
+  | "chicken"
   | "plaintext";
 
 // worker: runs in a Web Worker, preview: runs in a sandboxed iframe, xml: well-formedness check
@@ -99,6 +101,7 @@ const LANGS: Record<
   go: { label: "Go", ext: ".go", indent: "\t", hl: "go", run: null },
   dart: { label: "Dart", ext: ".dart", indent: "  ", hl: "dart", run: null },
   perl: { label: "Perl", ext: ".pl", indent: "    ", hl: "perl", run: null },
+  chicken: { label: "Chicken", ext: ".chicken", indent: "", hl: "chicken", run: "worker" },
   plaintext: { label: "PlainText", ext: ".txt", indent: "    ", hl: null, run: null },
 };
 
@@ -145,6 +148,14 @@ hljs.registerLanguage("csharp", csharp);
 hljs.registerLanguage("go", go);
 hljs.registerLanguage("dart", dart);
 hljs.registerLanguage("perl", perl);
+
+// Chicken has no built-in highlight.js grammar, so we define a minimal one
+const chickenLang = (): Language => ({
+  name: "Chicken",
+  contains: [{ className: "keyword", begin: /\bchicken\b/ }],
+});
+
+hljs.registerLanguage("chicken", chickenLang);
 
 // Highlighting on every keystroke would lag on huge files, so skip it past this size
 const MAX_HIGHLIGHT_CHARS = 200_000;
@@ -258,6 +269,78 @@ self.onmessage = async (e) => {
       }
       const js = self.Babel.transform(code, { filename: "main.ts", presets: ["typescript"] }).code;
       await runScript(js);
+        } else if (lang === "chicken") {
+      // each line is one instruction, its opcode is the number of chickens
+      const ops = code.split(NL).map((line, i) => {
+        const t = line.trim();
+        if (!t) return 0;
+        const words = t.split(" ").filter((w) => w.length);
+        if (words.some((w) => w !== "chicken")) {
+          throw new Error("Line " + (i + 1) + ": only the word chicken is allowed");
+        }
+        return words.length;
+      });
+      // stack[0] is the stack itself and stack[1] is the (empty) input
+      const input = [];
+      const stack = [null, input];
+      stack[0] = stack;
+      let ip = 0;
+      let halted = false;
+      const pop = () => {
+        if (stack.length <= 2) throw new Error("Stack underflow at line " + (ip + 1));
+        return stack.pop();
+      };
+      const load = (src, addr) => {
+        const source = stack[src];
+        if (!source || typeof source !== "object") {
+          throw new Error("Invalid source at line " + (ip + 1));
+        }
+        return source[addr];
+      };
+      while (ip < ops.length && !halted) {
+        const op = ops[ip];
+        if (op === 0) {
+          halted = true;
+          break;
+        }
+        if (op === 1) {
+          stack.push("chicken");
+        } else if (op === 2) {
+          const a = pop();
+          const b = pop();
+          stack.push(a + b);
+        } else if (op === 3) {
+          const a = pop();
+          const b = pop();
+          stack.push(b - a);
+        } else if (op === 4) {
+          const a = pop();
+          const b = pop();
+          stack.push(a * b);
+        } else if (op === 5) {
+          const a = pop();
+          const b = pop();
+          stack.push(a === b ? 1 : 0);
+        } else if (op === 6) {
+          const addr = pop();
+          const src = pop();
+          stack.push(load(src, addr));
+        } else if (op === 7) {
+          const addr = pop();
+          const src = pop();
+          stack.push(stack[load(src, addr)]);
+        } else if (op === 8) {
+          const offset = Number(pop());
+          const cond = pop();
+          if (cond) ip += offset;
+        } else if (op === 9) {
+          stack.push(String.fromCharCode(Number(pop())));
+        } else {
+          stack.push(op - 10);
+        }
+        ip++;
+      } 
+      if (stack.length > 2) post("out", String(stack[stack.length - 1]));
     } else {
       await runScript(code);
     }
