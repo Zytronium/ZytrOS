@@ -845,22 +845,39 @@ export default function IDEX() {
   };
 
   const onEditorKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Tab adds one indent level to the current line
+    // Tab adds an indenation
     if (e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
+
       const el = e.currentTarget;
       const start = el.selectionStart;
+      const end = el.selectionEnd;
       const lineStart = el.value.lastIndexOf("\n", start - 1) + 1;
       const unit = LANGS[lang].indent;
 
-      el.setRangeText(unit, lineStart, lineStart, "preserve");
+      // Insert the indentation at the start of the current line.
+      const value = el.value;
+      const updatedValue =
+        value.slice(0, lineStart) + unit + value.slice(lineStart);
 
-      // Keep the caret at the same position relative to the text
-      const pos = start + unit.length;
-      el.setSelectionRange(pos, pos);
+      // Update React state through the normal change handler.
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+
+      nativeInputValueSetter?.call(el, updatedValue);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+
+      // Preserve the selection, accounting for the inserted indentation.
+      el.setSelectionRange(
+        start + unit.length,
+        end + unit.length,
+      );
+
       return;
     }
-    
+
     // Shift+Tab removes one indent level from the current line
     if (e.key === "Tab" && e.shiftKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
