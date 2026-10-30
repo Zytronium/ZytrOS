@@ -1,10 +1,11 @@
 "use client";
 
-import { APPS } from "../lib/apps";
+import { useApps } from "../lib/apps";
 import { TASKBAR_RESERVE, useDesktop } from "../lib/windows";
 
 export default function DesktopIcons() {
   const launch = useDesktop((s) => s.launch);
+  const apps = useApps();
 
   return (
     <nav
@@ -12,7 +13,7 @@ export default function DesktopIcons() {
       className="absolute left-3 top-3 z-[1] flex flex-col flex-wrap content-start gap-1"
       style={{ bottom: TASKBAR_RESERVE }}
     >
-      {APPS.map(({ id, title, icon: Icon }) => (
+      {apps.map(({ id, title, icon: Icon }) => (
         <button
           key={id}
           type="button"

@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { House } from "lucide-react";
-import { APPS } from "../lib/apps";
+import { useApps, useWindowApps } from "../lib/apps";
+import { TEST_ID } from "../lib/customApps";
 import { useDesktop } from "../lib/windows";
 import Clock from "./Clock";
 
@@ -14,6 +15,10 @@ export default function Taskbar() {
   const focused = useDesktop((s) => s.focused);
   const launch = useDesktop((s) => s.launch);
   const taskbarClick = useDesktop((s) => s.taskbarClick);
+
+  // The start menu lists real apps, the taskbar also shows the test app while it is open
+  const apps = useApps();
+  const windowApps = useWindowApps();
 
   // Close the start menu on outside click or Escape
   useEffect(() => {
@@ -43,7 +48,7 @@ export default function Taskbar() {
           aria-label="Start menu"
           className="glass menu-pop absolute bottom-[calc(100%+0.75rem)] left-0 w-60 rounded-2xl p-2"
         >
-          {APPS.map(({ id, title, icon: Icon }) => (
+          {apps.map(({ id, title, icon: Icon }) => (
             <button
               key={id}
               type="button"
@@ -81,8 +86,11 @@ export default function Taskbar() {
 
         <span className="mx-0.5 h-6 w-px bg-line" aria-hidden />
 
-        {APPS.map(({ id, title, icon: Icon }) => {
+        {windowApps.map(({ id, title, icon: Icon }) => {
           const win = windows[id];
+          if (!win) return null;
+          // The test app only shows up while its window is open
+          if (id === TEST_ID && !win.open) return null;
           const active = focused === id && win.open && !win.minimized;
           return (
             <button

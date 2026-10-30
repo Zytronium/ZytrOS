@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Rnd } from "react-rnd";
 import { X } from "lucide-react";
-import { APP_BY_ID, type AppId } from "../lib/apps";
+import { useApp, type AppId } from "../lib/apps";
 import { useDesktop } from "../lib/windows";
 
 // Window control glyphs: hand-drawn so every angle is exactly 90 degrees
@@ -37,7 +37,7 @@ const RestoreGlyph = () => (
 );
 
 export default function AppWindow({ id }: { id: AppId }) {
-  const app = APP_BY_ID[id];
+  const app = useApp(id);
   const win = useDesktop((s) => s.windows[id]);
   const focused = useDesktop((s) => s.focused === id);
   const focus = useDesktop((s) => s.focus);
@@ -45,6 +45,8 @@ export default function AppWindow({ id }: { id: AppId }) {
   const minimize = useDesktop((s) => s.minimize);
   const toggleMaximize = useDesktop((s) => s.toggleMaximize);
   const setGeometry = useDesktop((s) => s.setGeometry);
+
+  const frameRef = useRef<HTMLDivElement>(null);
 
   // Briefly enables size and position transitions so maximize and restore animate
   const [snapping, setSnapping] = useState(false);
@@ -54,7 +56,27 @@ export default function AppWindow({ id }: { id: AppId }) {
     return () => clearTimeout(timer);
   }, [snapping]);
 
-  if (!win.open) return null;
+  // Clicks inside an iframe never reach the page, but the page window blurs
+  // and the iframe becomes the active element, so focus this window then
+  useEffect(() => {
+    const onBlur = () => {
+      // activeElement updates just after the blur event
+      setTimeout(() => {
+        const active = document.activeElement;
+        if (
+          active instanceof HTMLIFrameElement &&
+          frameRef.current?.contains(active)
+        ) {
+          focus(id);
+        }
+      }, 0);
+    };
+    window.addEventListener("blur", onBlur);
+    return () => window.removeEventListener("blur", onBlur);
+  }, [id, focus]);
+
+  // Also covers a window for an app that was just uninstalled
+  if (!app || !win || !win.open) return null;
 
   const Icon = app.icon;
   const Content = app.Content;
@@ -102,6 +124,7 @@ export default function AppWindow({ id }: { id: AppId }) {
       }
     >
       <div
+        ref={frameRef}
         role="dialog"
         aria-label={app.title}
         className="win-frame flex h-full flex-col"

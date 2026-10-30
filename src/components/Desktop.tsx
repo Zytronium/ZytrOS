@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, type CSSProperties } from "react";
-import { APPS } from "../lib/apps";
+import { useWindowApps } from "../lib/apps";
+import { useCustomApps } from "../lib/customApps";
 import { TASKBAR_RESERVE, useDesktop } from "../lib/windows";
 import AppWindow from "./AppWindow";
 import DesktopIcons from "./DesktopIcons";
@@ -10,7 +11,14 @@ import Wallpaper from "./Wallpaper";
 
 export default function Desktop() {
   const blur = useDesktop((s) => s.blur);
-  const launch = useDesktop((s) => s.launch)
+  const launch = useDesktop((s) => s.launch);
+  const hydrate = useCustomApps((s) => s.hydrate);
+  const apps = useWindowApps();
+
+  // Load installed custom apps from local storage
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
 
   // Open the welcome window when the desktop loads
   useEffect(() => {
@@ -27,7 +35,7 @@ export default function Desktop() {
         className="pointer-events-none absolute inset-0 isolate z-10"
         style={{ "--taskbar-reserve": `${TASKBAR_RESERVE}px` } as CSSProperties}
       >
-        {APPS.map(({ id }) => (
+        {apps.map(({ id }) => (
           <AppWindow key={id} id={id} />
         ))}
       </div>

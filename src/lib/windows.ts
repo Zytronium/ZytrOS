@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { APPS, type AppId } from "./apps";
+import { getApps, type AppId } from "./apps";
+import { TEST_ID, useCustomApps, type CustomApp } from "./customApps";
 
 // Space kept free at the bottom of the screen for the floating taskbar
 export const TASKBAR_RESERVE = 88;
@@ -59,6 +60,7 @@ const INITIAL_SIZE: Partial<Record<AppId, { w: number; h: number }>> = {
 
 // Picks a first-open position near the center, fanned out a little per app
 function place(id: AppId): Geometry & { maximized: boolean } {
+  const apps = getApps();
   const vw = window.innerWidth;
   const vh = window.innerHeight - TASKBAR_RESERVE;
   const size = INITIAL_SIZE[id] ?? { w: 780, h: 520 };
@@ -68,7 +70,7 @@ function place(id: AppId): Geometry & { maximized: boolean } {
   const offset =
     id === "welcome"
       ? 0
-      : APPS.findIndex((app) => app.id === id) - (APPS.length - 1) / 2;
+      : apps.findIndex((app) => app.id === id) - (apps.length - 1) / 2;
   return {
     w,
     h,
@@ -84,7 +86,7 @@ function topVisible(
   exclude: AppId,
 ): AppId | null {
   let best: AppId | null = null;
-  for (const { id } of APPS) {
+  for (const id of Object.keys(windows)) {
     const win = windows[id];
     if (id === exclude || !win.open || win.minimized) continue;
     if (best === null || win.z > windows[best].z) best = id;
@@ -94,14 +96,14 @@ function topVisible(
 
 export const useDesktop = create<DesktopStore>()((set, get) => ({
   windows: Object.fromEntries(
-    APPS.map((app) => [app.id, blankWindow()]),
+    getApps().map((app) => [app.id, blankWindow()]),
   ) as Record<AppId, WindowState>,
   focused: null,
   topZ: 0,
 
   launch: (id) =>
     set((s) => {
-      const win = s.windows[id];
+      const win = s.windows[id] ?? blankWindow();
       const z = s.topZ + 1;
       const placement = win.placed ? {} : place(id);
       return {
@@ -117,13 +119,14 @@ export const useDesktop = create<DesktopStore>()((set, get) => ({
   taskbarClick: (id) => {
     const s = get();
     const win = s.windows[id];
-    if (!win.open || win.minimized) s.launch(id);
+    if (!win || !win.open || win.minimized) s.launch(id);
     else if (s.focused === id) s.minimize(id);
     else s.focus(id);
   },
 
   focus: (id) =>
     set((s) => {
+      if (!s.windows[id]) return s;
       if (s.focused === id && s.windows[id].z === s.topZ) return s;
       const z = s.topZ + 1;
       return {
@@ -135,8 +138,9 @@ export const useDesktop = create<DesktopStore>()((set, get) => ({
 
   blur: () => set((s) => (s.focused === null ? s : { focused: null })),
 
-  close: (id) =>
+  close: (id) => {
     set((s) => {
+      if (!s.windows[id]) return s;
       const windows = {
         ...s.windows,
         [id]: { ...s.windows[id], open: false, minimized: false },
@@ -145,10 +149,14 @@ export const useDesktop = create<DesktopStore>()((set, get) => ({
         windows,
         focused: s.focused === id ? topVisible(windows, id) : s.focused,
       };
-    }),
+    });
+    // Closing the test window discards the test app
+    if (id === TEST_ID) useCustomApps.getState().clearTest();
+  },
 
   minimize: (id) =>
     set((s) => {
+      if (!s.windows[id]) return s;
       const windows = {
         ...s.windows,
         [id]: { ...s.windows[id], minimized: true },
@@ -160,15 +168,56 @@ export const useDesktop = create<DesktopStore>()((set, get) => ({
     }),
 
   toggleMaximize: (id) =>
-    set((s) => ({
-      windows: {
-        ...s.windows,
-        [id]: { ...s.windows[id], maximized: !s.windows[id].maximized },
-      },
-    })),
+    set((s) => {
+      if (!s.windows[id]) return s;
+      return {
+        windows: {
+          ...s.windows,
+          [id]: { ...s.windows[id], maximized: !s.windows[id].maximized },
+        },
+      };
+    }),
 
   setGeometry: (id, geometry) =>
-    set((s) => ({
-      windows: { ...s.windows, [id]: { ...s.windows[id], ...geometry } },
-    })),
+    set((s) => {
+      if (!s.windows[id]) return s;
+      return { windows: { ...s.windows, [id]: { ...s.windows[id], ...geometry } } };
+    }),
 }));
+
+// -------- Custom app window sync --------
+
+// Keeps a window entry for every installed app (and the test app) and drops entries
+// of removed ones, so components can keep reading windows[id] without checking
+function syncCustomWindows(apps: CustomApp[], test: CustomApp | null) {
+  useDesktop.setState((s) => {
+    const ids = new Set(apps.map((a) => a.id));
+    if (test) ids.add(TEST_ID);
+    const windows = { ...s.windows };
+    let changed = false;
+    for (const id of ids) {
+      if (!windows[id]) {
+        windows[id] = blankWindow();
+        changed = true;
+      }
+    }
+    for (const id of Object.keys(windows)) {
+      if ((id.startsWith("custom-") || id === TEST_ID) && !ids.has(id)) {
+        delete windows[id];
+        changed = true;
+      }
+    }
+    if (!changed) return s;
+    const focused =
+      s.focused && !windows[s.focused] ? topVisible(windows, s.focused) : s.focused;
+    return { windows, focused };
+  });
+}
+
+useCustomApps.subscribe((state, prev) => {
+  syncCustomWindows(state.apps, state.test);
+  // Every test run opens (or reloads and refocuses) the test window
+  if (state.test && state.test !== prev.test) {
+    useDesktop.getState().launch(TEST_ID);
+  }
+});

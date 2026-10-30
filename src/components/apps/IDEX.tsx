@@ -21,6 +21,7 @@ import go from "highlight.js/lib/languages/go";
 import dart from "highlight.js/lib/languages/dart";
 import perl from "highlight.js/lib/languages/perl";
 import type { Language } from "highlight.js";
+import { REACT_URL, REACT_DOM_URL, useCustomApps } from "@/lib/customApps";
 
 // -------- Types --------
 type Lang =
@@ -28,6 +29,7 @@ type Lang =
   | "typescript"
   | "jsx"
   | "tsx"
+  | "app"
   | "python"
   | "ruby"
   | "sql"
@@ -47,8 +49,9 @@ type Lang =
   | "chicken"
   | "plaintext";
 
-// worker: runs in a Web Worker, preview: runs in a sandboxed iframe, xml: well-formedness check
-type RunKind = "worker" | "preview" | "xml";
+// worker: runs in a Web Worker, preview: runs in a sandboxed iframe, xml: well-formedness check,
+// app: compiled in the worker, then opened as a test window on the desktop
+type RunKind = "worker" | "preview" | "xml" | "app";
 
 type Line = { kind: "out" | "err" | "sys"; text: string };
 
@@ -85,6 +88,7 @@ const LANGS: Record<
   typescript: { label: "TypeScript", ext: ".ts", indent: "  ", hl: "typescript", run: "worker" },
   jsx: { label: "JSX", ext: ".jsx", indent: "  ", hl: "javascript", run: "preview" },
   tsx: { label: "TSX", ext: ".tsx", indent: "  ", hl: "typescript", run: "preview" },
+  app: { label: "App", ext: ".app.tsx", indent: "  ", hl: "typescript", run: "app" },
   python: { label: "Python", ext: ".py", indent: "    ", hl: "python", run: "worker" },
   ruby: { label: "Ruby", ext: ".rb", indent: "  ", hl: "ruby", run: "worker" },
   sql: { label: "SQL", ext: ".sql", indent: "  ", hl: "sql", run: "worker" },
@@ -120,9 +124,6 @@ const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/";
 const SQLJS_URL = "https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/";
 const BABEL_URL = "https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.0/babel.min.js";
 const OPAL_URL = "https://cdn.opalrb.com/opal/current/";
-const REACT_URL = "https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.development.js";
-const REACT_DOM_URL =
-  "https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.development.js";
 
 const MAX_OUTPUT_LINES = 2000;
 const STORAGE_PREFIX = "idex";
@@ -269,7 +270,20 @@ self.onmessage = async (e) => {
       }
       const js = self.Babel.transform(code, { filename: "main.ts", presets: ["typescript"] }).code;
       await runScript(js);
-        } else if (lang === "chicken") {
+    } else if (lang === "app") {
+      if (!self.Babel) {
+        post("sys", "Loading TypeScript compiler...");
+        importScripts("${BABEL_URL}");
+      }
+      post("sys", "Compiling app...");
+      let out = self.Babel.transform(code, {
+        filename: "app.tsx",
+        presets: [["react"], ["typescript", { isTSX: true, allExtensions: true }]],
+        plugins: ["transform-modules-commonjs"]
+      }).code;
+      out += NL + ";if (typeof App !== 'undefined' && !module.exports.default) module.exports.default = App;";
+      post("compiled", out);
+    } else if (lang === "chicken") {
       // each line is one instruction, its opcode is the number of chickens
       const ops = code.split(NL).map((line, i) => {
         const t = line.trim();
@@ -439,6 +453,69 @@ ${PREVIEW_HOOK}
 </body>
 </html>`;
 }
+
+// -------- Custom app helpers --------
+const EXAMPLE_APP = `import { useState } from "react";
+
+// optional, defaults to the file name
+export const title = "Counter";
+
+// optional, must scale to fill its container
+export function Icon() {
+  return (
+    <svg viewBox="0 0 64 64" width="100%" height="100%">
+      <rect width="64" height="64" rx="14" fill="#6366f1" />
+      <text x="32" y="43" fontSize="30" textAnchor="middle" fill="white">+1</text>
+    </svg>
+  );
+}
+
+// the window background is translucent by default
+export default function App() {
+  const [n, setN] = useState(0);
+  return (
+    <div
+      style={{
+        display: "grid",
+        placeItems: "center",
+        height: "100%",
+        color: "#e5e7eb",
+      }}
+    >
+      <button
+        onClick={() => setN(n + 1)}
+        style={{
+          padding: "10px 18px",
+          borderRadius: 10,
+          border: "1px solid rgba(255,255,255,0.25)",
+          background: "rgba(255,255,255,0.08)",
+          color: "inherit",
+          fontSize: 16,
+          cursor: "pointer",
+        }}
+      >
+        Clicked {n} times
+      </button>
+    </div>
+  );
+}
+`;
+
+const APP_GUIDE = [
+  "How to build custom apps",
+  "1. Pick App in the language menu.",
+  "2. Export a default component (or name it App). It fills the app window.",
+  "3. Optional: export const title = \"My App\" to set the name.",
+  "4. Optional: export function Icon() for the desktop icon. It must scale to fill its container.",
+  "   Use width and height of 100% or an SVG viewBox. It can be animated too.",
+  "5. Without an Icon export, a default icon is used.",
+  "6. The window background is transparent. Set your own colors if you want a solid background.",
+  "7. Only react and react-dom can be imported.",
+  "8. Press Run. Your app opens in its own test window on the desktop.",
+  "9. If it runs without errors, Install unlocks. Editing the code locks it until you run again.",
+  "10. Closing the test window discards the test, an installed app is not affected.",
+  "Use Help > Insert example app for a starting point.",
+];
 
 // -------- Local storage helpers --------
 const metaKey = (name: string) =>
@@ -648,6 +725,15 @@ export default function IDEX() {
     text: string;
   } | null>(null);
 
+  // Result of the last app test run, tied to the exact code that was run
+  const [check, setCheck] = useState<{
+    code: string;
+    ok: boolean;
+    compiled: string;
+    hasIcon: boolean;
+    title: string | null;
+  } | null>(null);
+
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -658,8 +744,18 @@ export default function IDEX() {
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gutterRef = useRef<HTMLPreElement>(null);
 
+  // App test run bookkeeping, read by the worker and message handlers
+  const runCodeRef = useRef("");
+  const compiledRef = useRef("");
+  const testBaseRef = useRef("app");
+  const runIdRef = useRef<number | null>(null);
+
+  const customApps = useCustomApps((s) => s.apps);
+
   const filename = `${safeBase(base)}${LANGS[lang].ext}`;
   const dirty = code !== savedCode;
+  const installable =
+    lang === "app" && check !== null && check.ok && check.code === code;
   const runKind = LANGS[lang].run;
   const canRun = runKind !== null;
   const highlighted = useMemo(() => highlight(code, lang), [code, lang]);
@@ -714,14 +810,40 @@ export default function IDEX() {
     syncScroll();
   }, [code]);
 
-  // Console output and errors coming from the preview iframe
+  // Console output, errors and test status from the preview iframe or the app test window
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
-      const frame = frameRef.current;
-      if (!frame || e.source !== frame.contentWindow) return;
       const d = e.data;
-      if (d && d.idex && (d.type === "out" || d.type === "err")) {
+      if (!d || !d.idex) return;
+
+      if (typeof d.run === "number") {
+        // messages from an app test window carry the run id, ignore stale runs
+        if (d.run !== runIdRef.current) return;
+      } else {
+        const frame = frameRef.current;
+        if (!frame || e.source !== frame.contentWindow) return;
+      }
+
+      if (d.type === "out" || d.type === "err") {
         pushLine(d.type, String(d.text));
+      } else if (d.type === "status") {
+        setCheck({
+          code: runCodeRef.current,
+          ok: !!d.ok,
+          compiled: compiledRef.current,
+          hasIcon: !!d.hasIcon,
+          title: typeof d.title === "string" ? d.title : null,
+        });
+        if (d.ok) {
+          pushLine(
+            "sys",
+            d.hasIcon
+              ? "App ran without errors and the icon passed. You can install it."
+              : "App ran without errors. No Icon export, so the default icon will be used. You can install it.",
+          );
+        } else {
+          pushLine("err", String(d.error ?? "The app failed to run."));
+        }
       }
     };
     window.addEventListener("message", onMessage);
@@ -758,7 +880,18 @@ export default function IDEX() {
     worker.onmessage = (e: MessageEvent<{ type: string; text?: string }>) => {
       const { type, text } = e.data;
       if (type === "done") setRunning(false);
-      else if (type === "out" || type === "err" || type === "sys") {
+      else if (type === "compiled") {
+        // the compiled app opens in its own window, which reports back with the run id
+        const compiled = text ?? "";
+        compiledRef.current = compiled;
+        runIdRef.current = useCustomApps.getState().runTest({
+          title: `${testBaseRef.current} (test)`,
+          source: runCodeRef.current,
+          compiled,
+          hasIcon: /\bexports\.Icon\b/.test(compiled),
+        });
+        pushLine("sys", "Compiled. Opening test window...");
+      } else if (type === "out" || type === "err" || type === "sys") {
         pushLine(type, text ?? "");
       }
     };
@@ -786,6 +919,14 @@ export default function IDEX() {
     }
 
     setOutput([]);
+
+    if (lang === "app") {
+      // a new run invalidates the previous result until the test window reports back
+      setCheck(null);
+      runCodeRef.current = code;
+      testBaseRef.current = safeBase(base);
+      runIdRef.current = null;
+    }
 
     if (runKind === "preview") {
       const html =
@@ -832,6 +973,7 @@ export default function IDEX() {
     setCode("");
     setSavedCode("");
     setBase("untitled");
+    setCheck(null);
     editorRef.current?.focus();
   };
 
@@ -869,6 +1011,7 @@ export default function IDEX() {
     setSavedCode(text);
     setLang(isLang(meta.lang) ? meta.lang : "plaintext");
     setBase(meta.base);
+    setCheck(null);
   };
 
   const deleteCurrent = () => {
@@ -878,6 +1021,37 @@ export default function IDEX() {
     deleteStored(meta);
     setFiles(listFiles());
     flash("ok", `Deleted ${filename} from this browser`);
+  };
+
+  // -------- App actions --------
+  const installApp = () => {
+    if (!check || !installable) {
+      flash("error", "Run the app without errors before installing it.");
+      return;
+    }
+    const title = (check.title ?? "").trim() || safeBase(base);
+    const result = useCustomApps.getState().install({
+      title,
+      source: code,
+      compiled: check.compiled,
+      hasIcon: check.hasIcon,
+    });
+    if (result.ok) flash("ok", `Installed ${title}. Find it on the desktop and start menu.`);
+    else flash("error", result.error);
+  };
+
+  const showAppGuide = () => {
+    setShowOutput(true);
+    setOutput(APP_GUIDE.map((text) => ({ kind: "sys" as const, text })));
+  };
+
+  const insertExample = () => {
+    if (!confirmDiscard()) return;
+    setLang("app");
+    setBase("counter");
+    setCode(EXAMPLE_APP);
+    setSavedCode("");
+    setCheck(null);
   };
 
   // -------- Editor actions --------
@@ -1041,6 +1215,12 @@ export default function IDEX() {
           disabled: !hasSavedCopy,
         },
         { label: "", separator: true },
+        { label: "Install as app", onClick: installApp, disabled: !installable },
+        ...customApps.map((a) => ({
+          label: `Uninstall ${a.title}`,
+          onClick: () => useCustomApps.getState().uninstall(a.id),
+        })),
+        { label: "", separator: true },
         {
           label: files.length ? "Open saved file" : "No saved files yet",
           header: true,
@@ -1104,7 +1284,11 @@ export default function IDEX() {
     },
     {
       name: "Help",
-      items: [{ label: "Keyboard shortcuts", onClick: showShortcuts }],
+      items: [
+        { label: "Keyboard shortcuts", onClick: showShortcuts },
+        { label: "How to build custom apps", onClick: showAppGuide },
+        { label: "Create template app", onClick: insertExample },
+      ],
     },
   ];
 
@@ -1213,6 +1397,21 @@ export default function IDEX() {
               </option>
             ))}
           </select>
+          {lang === "app" && (
+            <button
+              type="button"
+              onClick={installApp}
+              disabled={!installable}
+              title={
+                installable
+                  ? "Install this app"
+                  : "Run the app without errors to unlock install"
+              }
+              className="rounded border border-line px-2 py-0.5 hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              Install
+            </button>
+          )}
           <button
             type="button"
             onClick={download}
@@ -1273,12 +1472,12 @@ export default function IDEX() {
             aria-hidden="true"
             className="shrink-0 overflow-hidden border-r border-line text-right text-dim select-none"
           >
-    <pre
-      ref={gutterRef}
-      className="m-0 px-3 pt-2.5 pb-2 font-mono text-sm leading-5 whitespace-pre"
-    >
-      {lineNumbers}
-    </pre>
+            <pre
+              ref={gutterRef}
+              className="m-0 px-3 pt-2.5 pb-2 font-mono text-sm leading-5 whitespace-pre"
+            >
+              {lineNumbers}
+            </pre>
           </div>
 
           <div className="relative min-h-0 min-w-0 flex-1">
@@ -1286,11 +1485,11 @@ export default function IDEX() {
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 overflow-hidden"
             >
-      <pre
-        ref={preRef}
-        className={`${EDITOR_TEXT} m-0 min-h-full w-max min-w-full bg-transparent`}
-        dangerouslySetInnerHTML={{ __html: highlighted + "\n" }}
-      />
+              <pre
+                ref={preRef}
+                className={`${EDITOR_TEXT} m-0 min-h-full w-max min-w-full bg-transparent`}
+                dangerouslySetInnerHTML={{ __html: highlighted + "\n" }}
+              />
             </div>
             <textarea
               ref={editorRef}
