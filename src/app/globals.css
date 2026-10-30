@@ -41,7 +41,7 @@
   --font-title: "Aquire";
   --font-sans: "Gltp Starion", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Hack", ui-monospace, monospace;
-  --font-digital: "Segment7";
+  --font-digital: "Segment7", "Hack", ui-monospace, monospace;;
 }
 
 /* -------- Base -------- */
@@ -52,6 +52,10 @@ body {
   overflow: hidden;
   background: var(--color-base);
   color: var(--color-fg);
+}
+
+.font-digital {
+  font-family: var(--font-digital);
 }
 
 :focus-visible {

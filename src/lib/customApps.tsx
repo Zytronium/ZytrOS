@@ -65,8 +65,9 @@ function readAll(): CustomApp[] {
 // -------- Store --------
 type CustomStore = {
   apps: CustomApp[];
-  // The app being test run from IDEX, never saved to storage
   test: CustomApp | null;
+  hostCss: string | null;
+  loadHostCss: () => Promise<void>;
   hydrate: () => void;
   install: (input: InstallInput) => SaveResult;
   uninstall: (id: string) => void;
@@ -78,9 +79,24 @@ type CustomStore = {
 export const useCustomApps = create<CustomStore>()((set, get) => ({
   apps: [],
   test: null,
+  hostCss: null,
 
-  // Called once on the client so the server render matches the first client render
-  hydrate: () => set({ apps: readAll() }),
+  loadHostCss: async () => {
+    if (get().hostCss !== null) return;
+    try {
+      const res = await fetch("/api/host-css");
+      if (!res.ok) throw new Error(String(res.status));
+      set({ hostCss: await res.text() });
+    } catch {
+      // run without host styles rather than blocking apps forever
+      set({ hostCss: "" });
+    }
+  },
+
+  hydrate: () => {
+    set({ apps: readAll() });
+    void get().loadHostCss();
+  },
 
   install: (input) => {
     const id = appId(input.title);
@@ -128,29 +144,40 @@ export const useCustomApps = create<CustomStore>()((set, get) => ({
   clearTest: () => set((s) => (s.test === null ? s : { test: null })),
 }));
 
-// -------- Runtime documents --------
+// -------- Host CSS --------
+function prepareHostCss(css: string) {
+  const origin = window.location.origin;
+  return (
+    css
+      // root-relative url() values must be absolute inside a srcdoc iframe
+      .replace(/url\((['"]?)\/(?!\/)/g, `url($1${origin}/`)
+      // keep the CSS from closing the style tag early
+      .replace(/<\/style/gi, "<\\/style")
+  );
+}
 
-// Precompiled code runs in a sandboxed iframe, so only React is loaded at runtime.
-// Passing a run id turns on test mode: console output, errors and a final status
-// (including the icon size check) are posted back to IDEX
+// -------- Runtime documents --------
 export function buildInstalledDoc(
   compiled: string,
   mode: "app" | "icon",
   run?: number,
+  hostCss = "",
 ) {
   const source = JSON.stringify(compiled).replace(/</g, "\\u003c");
-  // color-scheme is pinned so the iframe canvas stays transparent
+  // !important because the host base rules set an opaque html/body background
   const css =
     mode === "icon"
-      ? "html{color-scheme:light}html,body,#root{width:100%;height:100%;margin:0;overflow:hidden;background:transparent}"
-      : "html{color-scheme:light}html,body{margin:0;height:100%;font-family:system-ui,sans-serif;background:transparent}#root{height:100%}";
+      ? "html{color-scheme:light}html,body,#root{width:100%;height:100%;margin:0;overflow:hidden;background:transparent!important}"
+      : "html{color-scheme:light}html,body{margin:0;height:100%;font-family:system-ui,sans-serif;background:transparent!important}#root{height:100%}";
   const target = mode === "icon" ? "mod.exports.Icon" : "mod.exports.default";
   const runId = run === undefined ? "null" : String(run);
+  const globals = prepareHostCss(hostCss);
   return `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
 <style>${css}</style>
+<style type="text/tailwindcss">${globals}</style>
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 <script src="${REACT_URL}"></script>
 <script src="${REACT_DOM_URL}"></script>
@@ -266,9 +293,13 @@ function DefaultAppIcon() {
 }
 
 function CustomIcon({ app, className }: { app: CustomApp; className?: string }) {
+  const hostCss = useCustomApps((s) => s.hostCss);
   const doc = useMemo(
-    () => (app.hasIcon ? buildInstalledDoc(app.compiled, "icon") : null),
-    [app],
+    () =>
+      app.hasIcon && hostCss !== null
+        ? buildInstalledDoc(app.compiled, "icon", undefined, hostCss)
+        : null,
+    [app, hostCss],
   );
   return (
     <div
@@ -304,15 +335,20 @@ function CustomIcon({ app, className }: { app: CustomApp; className?: string }) 
 }
 
 function CustomAppView({ app }: { app: CustomApp }) {
+  const hostCss = useCustomApps((s) => s.hostCss);
   const doc = useMemo(
     () =>
-      buildInstalledDoc(
-        app.compiled,
-        "app",
-        app.id === TEST_ID ? app.updated : undefined,
-      ),
-    [app],
+      hostCss === null
+        ? null
+        : buildInstalledDoc(
+          app.compiled,
+          "app",
+          app.id === TEST_ID ? app.updated : undefined,
+          hostCss,
+        ),
+    [app, hostCss],
   );
+  if (doc === null) return null;
   return (
     <iframe
       title={app.title}
