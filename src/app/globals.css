@@ -20,6 +20,13 @@
   font-style: normal;
 }
 
+@font-face {
+  font-family: 'Segment7';
+  src: url('/fonts/Segment7.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
 @theme {
   --color-base: #0b0816;
   --color-surface: #120e22;
@@ -34,6 +41,7 @@
   --font-title: "Aquire";
   --font-sans: "Gltp Starion", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Hack", ui-monospace, monospace;
+  --font-digital: "Segment7";
 }
 
 /* -------- Base -------- */
