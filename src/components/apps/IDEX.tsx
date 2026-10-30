@@ -1,5 +1,5 @@
 "use client";
-
+// this comment enables font-digital class
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import hljs from "highlight.js/lib/core";
@@ -29,7 +29,7 @@ type Lang =
   | "typescript"
   | "jsx"
   | "tsx"
-  | "app" /**/
+  | "app"
   | "python"
   | "ruby"
   | "sql"
