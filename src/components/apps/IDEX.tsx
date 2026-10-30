@@ -29,7 +29,7 @@ type Lang =
   | "typescript"
   | "jsx"
   | "tsx"
-  | "app"
+  | "app" /**/
   | "python"
   | "ruby"
   | "sql"
