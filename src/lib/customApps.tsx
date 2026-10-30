@@ -151,6 +151,7 @@ export function buildInstalledDoc(
 <head>
 <meta charset="utf-8">
 <style>${css}</style>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 <script src="${REACT_URL}"></script>
 <script src="${REACT_DOM_URL}"></script>
 </head>
